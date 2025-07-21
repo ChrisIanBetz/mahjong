@@ -1,0 +1,7 @@
+0 - Joker
+1 - Dragon
+2 - Wind
+3 - Flower
+4 - Bam
+5 - Dot
+6 - Crak
