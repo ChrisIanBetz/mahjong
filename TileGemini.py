@@ -12,11 +12,11 @@ def parse_tile(label):
     #Check for flowers or jokers
     if label.find("joker") != -1:
         return Hands.Tile("", "joker")
-    if label.find("flower") != -1:
+    if label.find("flower") != -1 or label.find("season") != -1:
         return Hands.Tile("", "flower")
 
     #Check for tiles containing the word 'dragon'
-    if label.find("dragon") != -1:
+    if label.find("dragon") != -1 or label.find("soap") != -1:
         dragons = ["red", "green", "white", "soap"]
         dragon_suits = ["crak", "bam", "dot", "dot"]
         for i, dragon in enumerate(dragons):
@@ -58,8 +58,10 @@ def parse_tile(label):
         if label.find(value) != -1:
             return Hands.Tile(tile_suit, values[i%9]) #Uses i%9 so that the numerical version of the values are used
 
-    #If label does not match any of the previous conditions, raise an exception
-    raise Exception("Hands.Tile parsing error with input: " + label)
+    #If label does not match any of the previous conditions, warn the user
+    print("Tile parsing error with label: " + label)
+    print("It is strongly recommended to manually correct this tile!")
+    return label
 
 
 
@@ -168,14 +170,52 @@ def get_tiles(bounding_boxes):
         tiles.append(parse_tile(label))
     return tiles
 
+def manual_get_tiles(tile_string: str):
+    tiles = []
+    for tile in tile_string.split(","):
+        tiles.append(parse_tile(tile))
+    return tiles
+
+def scan_tiles(path: str):
+    done = False
+    tiles = None
+    while not done:
+        print("Scanning tiles...")
+        boxes = identify_multiple_tiles(path)
+        tiles = get_tiles(boxes)
+        print("Rack:")
+        for tile in tiles[0:len(tiles)-1]:
+            print(str(tile) + ", ", end='')
+        print(str(tiles[len(tiles)-1]))
+        correct = input("Are these tiles correct? [Y/N]:")
+        if correct.startswith("Y") or correct.startswith("y"):
+            done = True
+        else:
+            manual = input("Would you like to input your tiles manually? [Y/N]:")
+            if manual.startswith("Y") or manual.startswith("y"):
+                tile_string = input("Tiles (separated by commas): ")
+                return manual_get_tiles(tile_string)
+
+    return tiles
+
+def full_rundown(tiles: [Hands.Tile], show_depth=1, depth=2):
+    print("\n\n-----Full Rundown-----\n")
+    print("Rack:")
+    for tile in tiles[0:len(tiles)-1]:
+        print(str(tile) + ", ", end='')
+    print(str(tiles[len(tiles)-1]))
+
+    top_hands, top_discards = Hands.find_closest_hands(tiles, show_depth, depth)
+
+    print("\nBest Discards: (depth = " + str(depth) + ")")
+    for entry in top_discards:
+        print(str(entry['tile']) + " --> strength = " + str(entry['strength rating']))
+
+    print("\nBest Hands:")
+    for hand in top_hands:
+        print(str(hand['hand']) + " - " + str(hand['distance']) + " tiles away")
 
 
-testPath = "images/MultipleTiles/o.PNG"
-boxes = identify_multiple_tiles(testPath)
-testTiles = get_tiles(boxes)
-print("Rack:")
-for testTile in testTiles:
-    print(str(testTile) + ", ", end='')
-print("\nBest Hands:")
-top_hands = Hands.find_closest_hands(testTiles, 3)
-print(top_hands)
+test_path = "images/MultipleTiles/s.PNG"
+test_tiles = scan_tiles(test_path)
+full_rundown(test_tiles, show_depth=0, depth=0)

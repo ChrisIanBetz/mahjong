@@ -8,6 +8,13 @@ class Tile:
         self.suit = suit
         self.value = value
 
+    def __eq__(self, other):
+        return self.suit == other.suit and self.value == other.value
+
+    def __lt__(self, other):
+        if self.suit == other.suit:
+            return self.value < other.value
+        return self.suit < other.suit
 
     def __str__(self):
         if self.suit == "":
@@ -300,7 +307,7 @@ joker_exception_list = [[["flower", "flower", "flower", "flower"], ["1", "1", "1
                         [["flower", "flower", "flower", "flower"], ["8", "8", "8", "8"], ["8", "8", "8"], ["8", "8", "8"], False],
                         [["flower", "flower", "flower", "flower"], ["9", "9", "9", "9"], ["9", "9", "9"], ["9", "9", "9"], False]]
 
-def sort_hand(rack: [Tile]):
+def sort_and_convert_hand(rack: [Tile]):
     #Converts and sorts hand into four string lists: suit-less, bams, dots, craks
     sorted_rack = [[], [], [], []]
     for tile in rack:
@@ -315,7 +322,25 @@ def sort_hand(rack: [Tile]):
                 sorted_rack[0].append(tile.value)
     return sorted_rack
 
-def hand_permutations(rack: [[str], [str], [str], [str]]):
+def revert_hand(rack: [[str]]):
+    #Converts list of four string lists (suit-less, bams, dots, craks) into a list of Tiles
+    #Suit - (bam, dot, crak, wind, or an empty string)
+    #Value - (1-9 or dragon for bam/dot/crak, north/east/west/south for wind, dragon, flower, or joker)
+    tiles = []
+    for tile in rack[0]:
+        if tile in ["north", "east", "west", "south"]:
+            tiles.append(Tile("wind", tile))
+        elif tile == "white dragon":
+            tiles.append(Tile("dot", "dragon"))
+        else:
+            tiles.append(Tile("", tile))
+    suits = ["bam", "dot", "crak"]
+    for index in np.arange(1, 4):
+        for tile in rack[index]:
+            tiles.append(Tile(suits[index-1], tile))
+    return tiles
+
+def hand_permutations(rack: [[str]]):
     #Returns a list of all suit permutations of the hand, not including the first element, since suit-less doesn't move
     #First element of the returned list is always the original list
     return [rack,
@@ -327,13 +352,12 @@ def hand_permutations(rack: [[str], [str], [str], [str]]):
 
 def hand_distance(rack: [Tile], hand: [[str], [str], [str], [str]]):
     #Returns the number of tiles needed to reach hand from given rack
-    #Due to the "suit-less" white dragon, the hand is assumed to be sorted in order of [suit-less, bams, dots, craks]
 
     #Check rack length
     if len(rack) != 13 and len(rack) != 14:
         raise Exception("Invalid rack size of " + str(len(rack)))
 
-    sorted_rack = sort_hand(rack)
+    sorted_rack = sort_and_convert_hand(rack) #Converts rack to str lists in order of [suit-less, bams, dots, craks]
 
     #Evaluate which permutations are necessary to check
     if not hand[1]:
@@ -348,6 +372,7 @@ def hand_distance(rack: [Tile], hand: [[str], [str], [str], [str]]):
 
     #Find the minimum distance between each permutation
     min_distance = 14
+    unused_tiles = []
     for perm in perms: #Iterate through each permutation (1, 3, or 6 times)
         rack_copy = copy.deepcopy(sorted_rack)
         cur_distance = 14
@@ -360,27 +385,94 @@ def hand_distance(rack: [Tile], hand: [[str], [str], [str], [str]]):
                 elif i == 0 and val == "white dragon" and rack_copy[2].count("dragon") != 0: #White dragon found and have dragon in dots
                     cur_distance -= 1
                     rack_copy[2].remove("dragon")
-                elif rack_copy[0].count("joker") != 0 and hand[i].count(val) > 2 and not hand in joker_exception_list: #Joker usable for tile
+                elif (rack_copy[0].count("joker") != 0 and hand[i].count(val) > 2 #Joker usable for tile
+                      and not (hand in joker_exception_list and len(hand[i]) == 4 and i != 0)): #Exception for specific hand
                     cur_distance -= 1
                     rack_copy[0].remove("joker")
-        min_distance = min(min_distance, cur_distance)
-    return min_distance
+        if cur_distance < min_distance:
+            min_distance = cur_distance
+            unused_tiles = copy.deepcopy(rack_copy)
+    return min_distance, unused_tiles
 
-def find_closest_hands(rack: [[str], [str], [str], [str]], number=5):
-    dtype = [('hand', list), ('distance', int)]
-    top_hands = np.ndarray(number, dtype=dtype)
-    top_hands.fill(([["foo"]], 14))
+def find_closest_hands(rack: [Tile], show_depth=1, depth=2):
+    dtype_hand = [('hand', list), ('distance', int), ('unused', list)]
+    top_hands = np.ndarray(len(hands), dtype=dtype_hand)
+    index = 0
     for hand in hands:
-        distance = hand_distance(rack, hand[0:4])
-        if distance < top_hands[number-1][1]:
-            top_hands[number-1] = (hand, distance)
-            top_hands.sort(order='distance')
-    return top_hands
+        distance, unused_tiles = hand_distance(rack, hand[0:4])
+        top_hands[index] = (hand, distance, unused_tiles)
+        index += 1
+    top_hands.sort(order='distance')
+    top_discards = evaluate_discards(rack, top_hands, depth)
+    return top_hands[0:find_depth_index(top_hands, show_depth)], top_discards
+
+def find_depth_index(top_hands: np.ndarray, show_depth: int):
+    best = top_hands[0]['distance']
+    target_depth = best + show_depth + 1
+    index = 0
+    for hand in top_hands:
+        if hand['distance'] == target_depth:
+            break
+        index += 1
+    return index
+
+def evaluate_discards(rack: [Tile], top_hands: np.ndarray, depth=2):
+    dtype_rack = [('tile', Tile), ('strength rating', float)] #Higher strength rating = tile is more useful
+    dtype_usage = [('tile', Tile), ('exposed', int), ('concealed', int)]
+    top_discards = np.ndarray(len(rack), dtype=dtype_rack)
+    curr_usage = np.ndarray(len(rack), dtype=dtype_usage)
+    index = 0
+    for tile in rack:
+        top_discards[index] = (tile, 0)
+        curr_usage[index] = (tile, 0, 0)
+        index += 1
+    best_tier = top_hands[0]['distance']
+    curr_tier = best_tier
+    curr_size = 0
+    best_size = 0
+    top_hands_index = 0
+    for hand in top_hands:
+        if hand['distance'] != curr_tier or top_hands_index == (len(top_hands) - 1):
+            if curr_tier == best_tier:
+                best_size = curr_size
+            index = 0
+            for tile in top_discards:
+                rating = get_usage_rating(curr_usage[index]['exposed'], curr_usage[index]['concealed'],
+                                          curr_tier, best_tier, curr_size, best_size)
+                tile['strength rating'] = round(tile['strength rating'] + rating, 2)
+                curr_usage[index]['exposed'] = 0
+                curr_usage[index]['concealed'] = 0
+                index += 1
+            curr_tier = hand['distance']
+            curr_size = 0
+        if (curr_tier - best_tier) > depth:
+            break
+        hand_type = 'concealed' if hand['hand'][4] else 'exposed'
+        curr_unused = revert_hand(hand['unused'])
+        for entry in curr_usage:
+            tile = entry['tile']
+            if curr_unused.count(tile) == 0:
+                entry[hand_type] += 1
+            else: curr_unused.remove(tile)
+        curr_size += 1
+        top_hands_index += 1
+    top_discards.sort(order='strength rating')
+    return top_discards
 
 
+    #- Rating = (
+    #               (exposed hands that use tile in tier / tier size) ---> basic exposed usability proportion
+    #               +
+    #               ((concealed hands that use tile in tier / tier size) ---> basic concealed usability proportion
+    #               / 1.5^(tier - 1)) ---> factor to reduce weight of concealed hands, especially ones with many tiles left
+    #           )
+    #           * tier size / best tier size ---> factor to favor having more options
+    #           / (tier - best tier + 1)^3 ---> factor to favor closer hands
+    #
+
+def get_usage_rating(exposed_count, concealed_count, tier, best_tier, tier_size, best_tier_size):
+    return (((exposed_count / tier_size) + ((concealed_count / tier_size) / (1.5 ** (tier - 1))))
+            * tier_size / best_tier_size
+            / ((tier - best_tier + 1) ** 3))
 
 
-# test_hand = [["white dragon", "white dragon", "white dragon", "white dragon"], ["2", "2", "2"], ["2", "2", "2", "5", "5", "5", "5"], [], False]
-# test_rack = [[], [], ["2", "2", "2", "5", "5", "3", "7", "dragon", "dragon", "dragon", "dragon"], ["2", "1", "2"]]
-# top_three = find_closest_hands(test_rack)
-# print(top_three)
