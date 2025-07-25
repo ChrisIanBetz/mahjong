@@ -430,15 +430,20 @@ def evaluate_discards(rack: [Tile], top_hands: np.ndarray, depth=2):
     curr_tier = best_tier
     curr_size = 0
     best_size = 0
+    best_exposed_count = 0
+    best_exposed = 0
     top_hands_index = 0
+    first_time = True
     for hand in top_hands:
         if hand['distance'] != curr_tier or top_hands_index == (len(top_hands) - 1):
-            if curr_tier == best_tier:
+            if first_time and curr_tier == best_tier:
                 best_size = curr_size
+                best_exposed = best_exposed_count / curr_size
+                first_time = False
             index = 0
             for tile in top_discards:
                 rating = get_usage_rating(curr_usage[index]['exposed'], curr_usage[index]['concealed'],
-                                          curr_tier, best_tier, curr_size, best_size)
+                                          curr_tier, best_tier, curr_size, best_size, best_exposed)
                 tile['strength rating'] = round(tile['strength rating'] + rating, 2)
                 curr_usage[index]['exposed'] = 0
                 curr_usage[index]['concealed'] = 0
@@ -456,7 +461,8 @@ def evaluate_discards(rack: [Tile], top_hands: np.ndarray, depth=2):
             else: curr_unused.remove(tile)
         curr_size += 1
         top_hands_index += 1
-    top_discards.sort(order='strength rating')
+        if first_time and not hand['hand'][4]:
+            best_exposed_count += 1
     return top_discards
 
 
@@ -467,12 +473,12 @@ def evaluate_discards(rack: [Tile], top_hands: np.ndarray, depth=2):
     #               / 1.5^(tier - 1)) ---> factor to reduce weight of concealed hands, especially ones with many tiles left
     #           )
     #           * tier size / best tier size ---> factor to favor having more options
-    #           / (tier - best tier + 1)^3 ---> factor to favor closer hands
+    #           / (tier - best tier + exposed proportion in best tier)^3 ---> factor to favor closer hands
     #
 
-def get_usage_rating(exposed_count, concealed_count, tier, best_tier, tier_size, best_tier_size):
+def get_usage_rating(exposed_count, concealed_count, tier, best_tier, tier_size, best_tier_size, best_tier_exposed):
     return (((exposed_count / tier_size) + ((concealed_count / tier_size) / (1.5 ** (tier - 1))))
             * tier_size / best_tier_size
-            / ((tier - best_tier + 1) ** 3))
+            / max(1, ((tier - best_tier + best_tier_exposed) ** 3)))
 
 

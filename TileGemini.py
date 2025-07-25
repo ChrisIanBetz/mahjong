@@ -104,7 +104,8 @@ def identify_multiple_tiles(path):
     return parse_json(response.text)
 
 def locate_multiple_tiles(path):
-    prompt = "Give the bounding boxes of the single mahjong tiles in this image as a JSON array. The box_2d should be [ymin, xmin, ymax, xmax] normalized to 0-1000. NEVER GROUP MORE THAN 1 TILE TOGETHER."
+    prompt = ("Give the bounding boxes of the single mahjong tiles in this image as a JSON array. The box_2d should be [ymin, xmin, ymax, xmax] normalized to 0-1000."
+              " NEVER GROUP MORE THAN 1 TILE TOGETHER.")
     image = Image.open(path)
     config = types.GenerateContentConfig(
         response_mime_type = "application/json",
@@ -115,8 +116,10 @@ def locate_multiple_tiles(path):
                                               config=config)
     return parse_json(response.text)
 
+def label_sort(box):
+    return box["label"]
 
-def plot_bounding_boxes(img_path, bounding_boxes):
+def plot_bounding_boxes(img_path: str, bounding_boxes: list):
     """
     Plots bounding boxes on an image with markers for each a name, using PIL, normalized coordinates, and different colors.
 
@@ -135,9 +138,20 @@ def plot_bounding_boxes(img_path, bounding_boxes):
 
     font = ImageFont.truetype("arial.ttf", size=20)
 
+    bounding_boxes.sort(key=label_sort)
+    index = 0
     # Iterate over the bounding boxes
-    for bounding_box in json.loads(bounding_boxes):
-        color = 'black'
+    for bounding_box in bounding_boxes:
+        match index:
+            case 0:
+                color = 'black'
+            case 1:
+                color = 'red'
+            case 2:
+                color = 'orangered'
+            case _:
+                color = 'gray'
+
 
         # Convert normalized coordinates to absolute coordinates
         abs_y1 = int(bounding_box["box_2d"][0]/1000 * height)
@@ -153,12 +167,16 @@ def plot_bounding_boxes(img_path, bounding_boxes):
 
         # Draw the bounding box
         draw.rectangle(
-            ((abs_x1, abs_y1), (abs_x2, abs_y2)), outline=color, width=4
+            ((abs_x1, abs_y1), (abs_x2, abs_y2)), outline=color, width=8
         )
 
         # Draw the text
         if "label" in bounding_box:
-            draw.text((abs_x1 + 8, abs_y2 - 25), bounding_box["label"], fill=color, font=font)
+            text_box = draw.textbbox((abs_x1 + 8, abs_y1 - 25), bounding_box["label"], font=font)
+            draw.rectangle(text_box, fill='white')
+            draw.text((abs_x1 + 8, abs_y1 - 25), bounding_box["label"], fill=color, font=font)
+
+        index += 1
 
     # Display the image
     img.show()
@@ -179,6 +197,7 @@ def manual_get_tiles(tile_string: str):
 def scan_tiles(path: str):
     done = False
     tiles = None
+    boxes = None
     while not done:
         print("Scanning tiles...")
         boxes = identify_multiple_tiles(path)
@@ -194,11 +213,10 @@ def scan_tiles(path: str):
             manual = input("Would you like to input your tiles manually? [Y/N]:")
             if manual.startswith("Y") or manual.startswith("y"):
                 tile_string = input("Tiles (separated by commas): ")
-                return manual_get_tiles(tile_string)
+                return manual_get_tiles(tile_string), boxes
+    return tiles, boxes
 
-    return tiles
-
-def full_rundown(tiles: [Hands.Tile], show_depth=1, depth=2):
+def full_rundown(path: str, tiles: [Hands.Tile], boxes_json: str, show_depth=1, depth=2):
     print("\n\n-----Full Rundown-----\n")
     print("Rack:")
     for tile in tiles[0:len(tiles)-1]:
@@ -207,6 +225,14 @@ def full_rundown(tiles: [Hands.Tile], show_depth=1, depth=2):
 
     top_hands, top_discards = Hands.find_closest_hands(tiles, show_depth, depth)
 
+    index = 0
+    boxes = json.loads(boxes_json)
+    for box in boxes:
+        box["label"] = str(top_discards[index]['strength rating'])
+        index += 1
+    plot_bounding_boxes(path, boxes)
+
+    top_discards.sort(order='strength rating')
     print("\nBest Discards: (depth = " + str(depth) + ")")
     for entry in top_discards:
         print(str(entry['tile']) + " --> strength = " + str(entry['strength rating']))
@@ -216,6 +242,7 @@ def full_rundown(tiles: [Hands.Tile], show_depth=1, depth=2):
         print(str(hand['hand']) + " - " + str(hand['distance']) + " tiles away")
 
 
-test_path = "images/MultipleTiles/s.PNG"
-test_tiles = scan_tiles(test_path)
-full_rundown(test_tiles, show_depth=0, depth=0)
+test_path = "images/MultipleTiles/w.PNG"
+test_tiles, test_boxes = scan_tiles(test_path)
+better_boxes = locate_multiple_tiles(test_path)
+full_rundown(test_path, test_tiles, better_boxes, show_depth=1, depth=3)
