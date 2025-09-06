@@ -24,6 +24,9 @@ class Tile:
             return f"{dragon_suits[self.suit]} dragon"
         return f"{self.value} {self.suit}"
 
+    def __repr__(self):
+        return self.__str__()
+
 
 #Hands are written in the format of four lists of strings and a boolean.
 #The first list contains the values of all "suit-less" tiles (flowers, winds),
@@ -411,7 +414,7 @@ def find_depth_index(top_hands: np.ndarray, show_depth: int):
     target_depth = best + show_depth + 1
     index = 0
     for hand in top_hands:
-        if hand['distance'] == target_depth:
+        if hand['distance'] >= target_depth:
             break
         index += 1
     return index

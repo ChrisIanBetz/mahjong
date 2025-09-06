@@ -1,8 +1,11 @@
 import numpy as np
 import cv2 as cv
 import Hands
-import time
-import matplotlib.pyplot as plt
+# import time
+# import matplotlib.pyplot as plt
+
+def read_image(path, mode=cv.IMREAD_REDUCED_GRAYSCALE_2):
+    return np.array(cv.imread(path, mode), dtype=np.int16)
 
 def standardize(tile: np.ndarray, new_height=75, new_width=75, pad_value=0):
     """Either pads or trims an input image array to a specific height and width.
@@ -62,7 +65,7 @@ def process_tiles(image: np.ndarray, boxes: list):
     """Returns a list of processed tile images, after trimming the edges and standardizing the array shape"""
     tile_images = []
     for box in boxes:
-        tile_images.append(process_tile(image[box[1]:box[3],box[0]:box[2]]))
+        tile_images.append(process_tile(image[box[1]//2:box[3]//2,box[0]//2:box[2]//2]))
     return tile_images
 
 tile_table = [Hands.Tile("", "nothing"),
@@ -108,8 +111,8 @@ base_tiles = [1,2,3,4,5,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,2
 standard_tiles = []
 
 for i in range(43):
-    standard_tiles.append(process_tile(cv.imread("images/SingleTiles/"+str(i)+".PNG", cv.IMREAD_REDUCED_GRAYSCALE_2)))
-standard_tiles.append(standardize(cv.imread("images/SingleTiles/43.PNG", cv.IMREAD_REDUCED_GRAYSCALE_2)))
+    standard_tiles.append(process_tile(read_image("images/SingleTiles/"+str(i)+".PNG")))
+standard_tiles.append(standardize(read_image("images/SingleTiles/43.PNG")))
 #Average height = 50.93023255813954
 #Average width = 37.30232558139535
 
@@ -123,30 +126,52 @@ def identify_tile(tile: np.ndarray):
         if cur_diff < min_diff:
             min_diff = cur_diff
             min_index = i
-    return tile_table[base_tiles[min_index]]
+    return min_diff, tile_table[base_tiles[min_index]]
 
+def identify_tiles(tiles: [np.ndarray]):
+    """Identifies the mahjong tiles in a given list"""
+    result = []
+    for tile in tiles:
+        #To avoid mistakes caused by the cropping being off-center by 1 pixel in any direction,
+        #   the best option out of 5 is chosen
+        center = identify_tile(tile)
+        right = identify_tile(np.roll(tile, (0, 1), axis=(0, 1)))
+        left = identify_tile(np.roll(tile, (0, -1), axis=(0, 1)))
+        down = identify_tile(np.roll(tile, 1, axis=0))
+        up = identify_tile(np.roll(tile, -1, axis=0))
+        min_diff = min(center, right, left, down, up)
+        result.append(min_diff[1])
 
+    return result
 
-
-b1_rack = [[29, 783, 162, 896], [164, 783, 295, 896], [295, 784, 428, 896], [429, 784, 560, 896], [562, 784, 694, 896], [693, 784, 825, 896], [827, 784, 960, 897], [960, 784, 1090, 897], [1092, 784, 1223, 896], [1225, 784, 1356, 896], [1357, 783, 1489, 896], [1489, 783, 1622, 896], [1622, 783, 1756, 896], [1753, 784, 1884, 896]]
-reduced_rack = [[14, 391, 81, 448], [82, 391, 147, 448], [147, 392, 214, 448], [214, 392, 280, 448], [281, 392, 347, 448], [346, 392, 412, 448], [413, 392, 480, 448], [480, 392, 545, 448], [546, 392, 611, 448], [612, 392, 678, 448], [678, 391, 744, 448], [744, 391, 811, 448], [811, 391, 878, 448], [876, 392, 942, 448]]
-
-t0 = time.time()
-base_image = cv.imread("images/MultipleTiles/b1.PNG", cv.IMREAD_REDUCED_GRAYSCALE_2)
-test_tiles = process_tiles(base_image, reduced_rack)
-t1 = time.time()
-labels = []
-for test_tile in test_tiles:
-    labels.append(identify_tile(test_tile))
-t2 = time.time()
-print("Processing time = " + str(t1 - t0))
-print("Identification time = " + str(t2 - t1))
-print("Total time = " + str(t2 - t0))
-plt.ioff()
-for i in np.arange(len(b1_rack)):
-    cur_tile = b1_rack[i]
-    print(labels[i])
-    plt.imshow(test_tiles[i])
-    plt.show()
-
-
+#
+# print(np.sum(np.abs(standard_tiles[29] - tile)))
+# plt.imshow(np.abs(standard_tiles[29] - tile))
+# plt.show()
+# print(np.sum(np.abs(standard_tiles[30] - tile)))
+# plt.imshow(np.abs(standard_tiles[30] - tile))
+# plt.show()
+#
+#
+# b1_rack = [[29, 783, 162, 896], [164, 783, 295, 896], [295, 784, 428, 896], [429, 784, 560, 896], [562, 784, 694, 896], [693, 784, 825, 896], [827, 784, 960, 897], [960, 784, 1090, 897], [1092, 784, 1223, 896], [1225, 784, 1356, 896], [1357, 783, 1489, 896], [1489, 783, 1622, 896], [1622, 783, 1756, 896], [1753, 784, 1884, 896]]
+# reduced_rack = [[14, 391, 81, 448], [82, 391, 147, 448], [147, 392, 214, 448], [214, 392, 280, 448], [281, 392, 347, 448], [346, 392, 412, 448], [413, 392, 480, 448], [480, 392, 545, 448], [546, 392, 611, 448], [612, 392, 678, 448], [678, 391, 744, 448], [744, 391, 811, 448], [811, 391, 878, 448], [876, 392, 942, 448]]
+#
+# t0 = time.time()
+# base_image = read_image("images/MultipleTiles/b1.PNG")
+# test_tiles = process_tiles(base_image, b1_rack)
+# t1 = time.time()
+# labels = []
+# for test_tile in test_tiles:
+#     labels.append(identify_tile(test_tile))
+# t2 = time.time()
+# print("Processing time = " + str(t1 - t0))
+# print("Identification time = " + str(t2 - t1))
+# print("Total time = " + str(t2 - t0))
+# plt.ioff()
+# for i in np.arange(len(b1_rack)):
+#     cur_tile = b1_rack[i]
+#     print(labels[i])
+#     plt.imshow(test_tiles[i])
+#     plt.show()
+#
+#

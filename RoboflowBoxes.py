@@ -47,10 +47,10 @@ def get_boxes(path):
         boxes.append(convert_xywh_to_xyxy(pred))
     return boxes
 
-def get_rack_boxes(path):
-    #Establish the bounding boxes of the player's rack
-    #This slow function should only be called once per game at the beginning
-    #FUNCTION WILL NOT WORK IF CALLED ON A GAME STATE WITH CALLED TILES
+def get_rack_boxes(path: str) -> list:
+    """Establish the bounding boxes of the player's rack
+    This slow function should only be called once per game at the beginning
+    FUNCTION WILL NOT WORK IF CALLED ON A GAME STATE WITH CALLED TILES"""
 
     image = cv.imread(path)
     boxes = model.infer(image)[0].predictions #Get bounding boxes of full image
@@ -79,9 +79,9 @@ def get_rack_boxes(path):
         rack.append([x1, y1, x2, y2])
     return rack
 
-test_path = "images/MultipleTiles/y.PNG"
-
-print(get_boxes(test_path))
+# test_path = "images/MultipleTiles/y.PNG"
+#
+# print(get_boxes(test_path))
 
 #test_image = cv.imread(test_path)
 # rack_boxes = get_rack_boxes(test_path)
