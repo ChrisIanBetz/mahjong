@@ -1,9 +1,9 @@
-0 - Joker
-1 - White Dragon / Soap
-2 - Green Dragon
-3 - Red Dragon
-4 - Flower
-5 - Season
+0 - Nothing
+1 - Joker
+2 - White Dragon / Soap
+3 - Green Dragon
+4 - Red Dragon
+5 - Flower
 6 - North Wind
 7 - East Wind
 8 - West Wind
